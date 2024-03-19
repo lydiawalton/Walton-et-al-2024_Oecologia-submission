@@ -1,0 +1,26 @@
+{
+    "id": "FE31B58F",
+    "path": "~/GitHub/Walton-et-al-2024_Oecologia-submission/MS Scripts/Exp.2_MetabolicRates_SUPPLEMENTARY.R",
+    "project_path": "MS Scripts/Exp.2_MetabolicRates_SUPPLEMENTARY.R",
+    "type": "r_source",
+    "hash": "3550613417",
+    "contents": "",
+    "dirty": false,
+    "created": 1710870111147.0,
+    "source_on_save": false,
+    "relative_order": 8,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "544,1",
+        "scrollLine": "518"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1710870189,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1710870189944,
+    "read_only": false,
+    "read_only_alternatives": []
+}

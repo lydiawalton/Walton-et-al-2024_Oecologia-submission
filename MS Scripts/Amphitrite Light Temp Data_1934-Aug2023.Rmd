@@ -1,0 +1,209 @@
+---
+title: "Amphitrite Lightstation Temp Data"
+author: "Lydia Walton"
+date: "`r Sys.Date()`"
+output:
+ html_document:
+    css: hidebutton.css
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    code_folding: hide
+---
+
+# Setup
+```{r loading libraries and importing data}
+
+dev.off()
+rm(list = ls(all=T))
+#Set working directory
+library(here)
+#Data manipulation
+library(dplyr)
+library(tidyr)
+#Data visualization
+library(ggplot2)
+library(kableExtra)
+
+
+##Import data
+Amph.dailytempdata <- 
+  read.csv("MS Data/AmphitritePoint_Daily_Sea_Surface_Temperature_and_Salinity_1934-2023_ALLSUMMER.csv")
+
+
+#Create theme for plotting
+
+#Font change to Times New Roman as "A"
+windowsFonts(A = windowsFont("Times New Roman"))
+
+#Lydia's theme
+LW_theme <- theme_classic() +
+  theme(text = element_text(family = "A"),
+        axis.title.x = element_text(vjust = -1, size = 12),
+        axis.title.y = element_text(vjust = 2, size = 12),
+        axis.text = element_text(size = 10),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        strip.text = element_text(size = 12),
+        panel.background = element_rect(fill = NA, color = "black"))
+
+```
+
+
+# Data manipulation
+```{r setting up the data}
+
+##################################
+## Data manipulation
+##################################
+
+# Split date column into 3 (day, month, year)
+Amph.dailytempdata.sep <- Amph.dailytempdata %>%
+  mutate(Year = lubridate::year(Date), 
+                Month = lubridate::month(Date), 
+                Day = lubridate::day(Date))
+
+#Change month to a factor
+#Amph.dailytempdata.sep$Month <- as.factor(Amph.dailytempdata.sep$Month)
+
+#Change year to a factor
+#Amph.dailytempdata.sep$Year <- as.factor(Amph.dailytempdata.sep$Year)
+
+##Filter with the data we want (let's look at the last 10 years first)
+Amph.2013to2023 <- Amph.dailytempdata.sep %>% 
+  filter(Year >= 2013) %>% 
+  filter(Temp.C < 900)
+
+#-----Per Year
+Amph.means.perYear <- Amph.2013to2023 %>% 
+  group_by(Year) %>% 
+  summarise(meanTemp = mean(Temp.C),
+            sdTemp = sd(Temp.C),
+            minTemp = min(Temp.C),
+            maxTemp = max(Temp.C))
+
+#-----Per Month
+Amph.means.perMonth <- Amph.2013to2023 %>% 
+  group_by(Year, Month) %>% 
+  summarise(meanTemp = mean(Temp.C),
+            sdTemp = sd(Temp.C),
+            minTemp = min(Temp.C),
+            maxTemp = max(Temp.C))
+
+#-----Per Day
+Amph.means.perDay <- Amph.2013to2023 %>% 
+  group_by(Year, Month, Day) %>% 
+  summarise(meanTemp = mean(Temp.C),
+            sdTemp = sd(Temp.C),
+            minTemp = min(Temp.C),
+            maxTemp = max(Temp.C))
+
+
+```
+
+
+# Plots
+```{r}
+##########################################################
+## Time series plots of temperature at Amphitrite Light
+##########################################################
+
+#Change month to a factor
+Amph.means.perDay$Month <- as.factor(Amph.means.perDay$Month)
+Amph.means.perMonth$Month <- as.factor(Amph.means.perMonth$Month)
+
+#Change year to a factor
+Amph.means.perDay$Year <- as.factor(Amph.means.perDay$Year)
+Amph.means.perMonth$Year <- as.factor(Amph.means.perMonth$Year)
+
+
+#------------------Plot by Month and Year
+Amph.tempseries.wholeyear <- Amph.means.perMonth %>% 
+  ggplot(aes(x = Month, y = meanTemp, color = Year, group = Year)) +
+  geom_point() +
+  geom_line() +
+  #facet_wrap(~Year) +
+  LW_theme +
+  labs(x = "Month", y = "Temperature (°C)")+
+  #scale_x_continuous(breaks = seq(0, 16, by = 2)) +
+  scale_y_continuous(breaks = seq(0, 16, by = 1)) 
+ 
+Amph.tempseries.wholeyear
+
+#-----------------Plot only 2022 and 2023 with min, max, and mean values
+Amph.means.perMonth.2022 <- Amph.means.perMonth %>% 
+  filter(Year == 2022)
+
+Amph.means.perMonth.2023 <- Amph.means.perMonth %>% 
+  filter(Year == 2023)
+
+#PLOT 2022
+Amph.tempseries.2022 <- Amph.means.perMonth.2022 %>% 
+  ggplot(aes(x = Month, y = meanTemp, color = Year, group = Year)) +
+  geom_point() +
+  geom_line() +
+  geom_ribbon(aes(x = Month, ymin = meanTemp, ymax=maxTemp, alpha = 0.2)) +
+  geom_ribbon(aes(x = Month, ymin = minTemp, ymax=meanTemp, alpha = 0.2)) +
+  LW_theme +
+  labs(x = "Month", y = "Sea Surface Temperature (°C)")+
+  #scale_x_continuous(breaks = seq(0, 16, by = 2)) +
+  scale_y_continuous(breaks = seq(0, 20, by = 1)) 
+ 
+Amph.tempseries.2022
+
+#PLOT 2023
+Amph.tempseries.2023 <- Amph.means.perMonth.2023 %>% 
+  ggplot(aes(x = Month, y = meanTemp, color = Year, group = Year)) +
+  geom_point() +
+  geom_line() +
+  geom_ribbon(aes(x = Month, ymin = meanTemp, ymax=maxTemp, alpha = 0.2)) +
+  geom_ribbon(aes(x = Month, ymin = minTemp, ymax=meanTemp, alpha = 0.2)) +
+  LW_theme +
+  labs(x = "Month", y = "Sea Surface Temperature (°C)")+
+  #scale_x_continuous(breaks = seq(0, 16, by = 2)) +
+  scale_y_continuous(breaks = seq(0, 20, by = 1)) 
+ 
+Amph.tempseries.2023
+
+```
+
+
+# Tables
+```{r}
+#tempdata.means.perYear <- tempdata.months %>% 
+#  group_by(Year) %>% 
+#  summarise(meanTemp = mean(Temperature),
+#            sdTemp = sd(Temperature),
+#            minTemp = min(Temperature),
+#            maxTemp = max(Temperature))
+
+
+## LOOKING AT 2022
+#-------------Per Month
+table.perMonth.2022 <- Amph.means.perMonth.2022 %>% 
+  kable(caption = "Table. Mean, max and minumum temperatures at Amphitrite Light shown per month in 2022.", 
+   #Change the column names
+      col.names = c("Year", "Month", 
+                    "Mean temp (°C)", "sd temp (°C)", "min temp (°C)", "max temp (°C)"), 
+      align = "c") %>%  #Align the data in the centre of the column
+  row_spec(row = 0, bold = TRUE) %>% #Make the column headers bold
+  kable_classic(full_width = F, html_font = "Arial") 
+
+table.perMonth.2022
+
+
+## LOOKING AT 2023
+#----------------Per Month
+table.perMonth.2023 <- Amph.means.perMonth.2023 %>% 
+  kable(caption = "Table. Mean, max and minumum temperatures at Amphitrite Light shown per month in 2023.", 
+   #Change the column names
+      col.names = c("Year", "Month", 
+                    "Mean temp (°C)", "sd temp (°C)", "min temp (°C)", "max temp (°C)"), 
+      align = "c") %>%  #Align the data in the centre of the column
+  row_spec(row = 0, bold = TRUE) %>% #Make the column headers bold
+  kable_classic(full_width = F, html_font = "Arial") 
+
+table.perMonth.2023
+
+```
+

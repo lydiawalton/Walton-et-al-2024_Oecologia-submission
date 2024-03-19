@@ -1,0 +1,547 @@
+##################################################################################
+# Title: Investigating the impact of air temperature and food availability on the
+#        metabolic rates of juvenile Pisaster ochraceus (Experiment 2) 
+#
+# Author: Lydia Walton
+# Last updated: 19-Mar-2024
+#################################################################################
+
+dev.off() #Clear open plots
+rm(list = ls(all=T)) #Clear environment
+
+#Set working directory
+library(here)
+#Packages for data manipulation
+library(dplyr)
+library(tidyr)
+#Data visualization
+library(ggplot2)
+library(ggpmisc)
+library(tibble)
+library(kableExtra)
+library(sjPlot)
+library(RColorBrewer)
+library(extrafont)
+library(ggpubr)
+library(patchwork)
+#Modeling
+library(quantreg)
+library(AICcmodavg)
+library(glmmTMB)
+library(EnvStats)
+library(broom)
+library(DHARMa)
+library(emmeans)
+
+
+PO.collection <- read.csv("MS Data/Pisaster_Collections_August2023.csv")
+PO.acclimation <- read.csv("MS Data/Pisaster_Acclimation_August2023.csv")
+
+PO.survivorship <- read.csv("MS Data/Pisaster_Mortality-data_August2023.csv")
+
+PO.metabolism <- read.csv("MS Data/Pisaster_Metabolic-Metadata_August2023.csv")
+
+###Create theme for plotting
+#Font change to Times New Roman as "A"
+#windowsFonts(A = windowsFont("Times New Roman"))
+
+#Lydia's theme
+LW_theme <- theme_classic() +
+  theme(#text = element_text(family = "A"),
+        axis.title.x = element_text(vjust = -1, size = 12),
+        axis.title.y = element_text(vjust = 2, size = 11),
+        strip.text = element_text(size = 12),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 10),
+        panel.background = element_rect(fill = NA, color = "black"))
+
+############################
+# Data manipulation
+############################
+
+
+#Clean up the data
+PO.metabolism.sub <- na.omit(PO.metabolism)
+
+#As factors
+PO.metabolism.sub$air.treatment <- as.factor(PO.metabolism.sub$air.treatment)
+PO.metabolism.sub$food.treatment <- as.factor(PO.metabolism.sub$food.treatment)
+
+
+PO.metabolism.sub <- PO.metabolism.sub %>% 
+  mutate(Treatment = case_when(
+    food.treatment =="Fed" & air.treatment=="25" ~ "+mussels/25°C air", 
+    food.treatment =="Fed" & air.treatment=="30" ~ "+mussels/30°C air",  
+    food.treatment =="Starved" & air.treatment=="25" ~ "-mussels/25°C air", 
+    food.treatment =="Starved" & air.treatment=="30" ~ "-mussels/30°C air",  
+    TRUE ~ "other"
+  )) %>% 
+  subset(select = c(star.ID, Treatment, food.treatment, air.treatment, Set, date, channel, salinity.ppm, 
+                    wet.weight.kg, AFDM.kg, WW.MR.mL.h.g, AFDM.MR.mL.h.g, MO2.mL.h,
+                    rsqrt.MR.weight, rsqrt.MR.absolute, Run, Attempt, Start, End))
+
+##Remove channel 6 because it's a massive outlier
+PO.metabolism.sub.NoCH6 <- PO.metabolism.sub[-6,] 
+
+##------------------Sample sizes (w/out CH6)
+# Fed/25 (N=8), Fed/30 (N=3), fasted/25 (N=4), fasted/30 (N=2)
+###NOTE: w CH6 --> fasted/25 (N=5)
+
+
+#################################################################################
+# MASS COMPARISONS AND RATIOS
+#################################################################################
+
+############################
+# Mass between treatments
+############################
+
+#------TABLE
+
+#Wet weight at collection
+mass.table.collection <- PO.collection %>% 
+  group_by(food.treatment, air.treatment) %>% 
+  summarise("Mean WW" = mean(star.wet.weight), 
+            "min WW" = min(star.wet.weight), "max WW" = max(star.wet.weight))
+
+mass.table.collection
+
+#WW and AFDM for survivors
+mass.table <- PO.metabolism.sub.NoCH6 %>% 
+  group_by(food.treatment, air.treatment) %>% 
+  summarise("Mean WW" = mean(wet.weight.kg), 
+            "min WW" = min(wet.weight.kg), "max WW" = max(wet.weight.kg),
+            "Mean AFDM" = mean(AFDM.kg),
+            "min AFDM" = min(AFDM.kg), "max AFDM" = max(AFDM.kg))
+
+mass.table
+
+#-------------------------Wet weight--------------------------------------------
+WW.mass.aov <- aov(wet.weight.kg ~ food.treatment*air.treatment,
+              data = PO.metabolism.sub.NoCH6)
+
+summary(WW.mass.aov)#NO SIGN DIFFERENCES
+
+#Check for homoscedasticity
+car::leveneTest(wet.weight.kg ~ food.treatment*air.treatment,
+                data = PO.metabolism.sub.NoCH6) #Equal variance
+#Check for normality
+shapiro.test(WW.mass.aov$residuals) #Normal
+
+
+#-----------------------AFDM----------------------------------------------------
+AFDM.mass.aov <- aov(AFDM.kg ~ food.treatment*air.treatment,
+                   data = PO.metabolism.sub.NoCH6)
+
+summary(AFDM.mass.aov)#NO SIGN DIFFERENCES
+
+#Check for homoscedasticity
+car::leveneTest(AFDM.kg ~ food.treatment*air.treatment,
+                data = PO.metabolism.sub.NoCH6) #Equal variance
+#Check for normality
+shapiro.test(AFDM.mass.aov$residuals) #very slightly not normal (p = 0.046)
+
+#------------------AFDM/wet weight ratio----------------------------------------
+PO.metabolism.sub.NoCH6$AFDM.WW.Ratio <- PO.metabolism.sub.NoCH6$AFDM.kg/PO.metabolism.sub.NoCH6$wet.weight.kg
+
+#AFDM:WW ratio table
+mass.table.ratio <-  PO.metabolism.sub.NoCH6 %>% 
+  group_by(food.treatment, air.treatment) %>% 
+  summarise("Mean AFDM:WW" = mean(AFDM.WW.Ratio), 
+            "min AFDM:WW" = min(AFDM.WW.Ratio), "max AFDM:WW" = max(AFDM.WW.Ratio))
+
+mass.table.ratio
+
+#ANOVA
+Ratio.aov <- aov(AFDM.WW.Ratio ~ food.treatment*air.treatment,
+                     data = PO.metabolism.sub.NoCH6)
+
+summary(Ratio.aov)#NO SIGN DIFFERENCES
+
+#Check for homoscedasticity
+car::leveneTest(AFDM.WW.Ratio ~ food.treatment*air.treatment,
+                data = PO.metabolism.sub.NoCH6) #Equal variance
+#Check for normality
+shapiro.test(Ratio.aov$residuals) #NORMAL
+
+
+##########################
+# PLOT RATIO (SURVIVORS)
+##########################
+
+Ratio.plot <- PO.metabolism.sub.NoCH6 %>% 
+  ggplot(aes(x = Treatment, y = AFDM.WW.Ratio, fill = Treatment)) +
+  geom_boxplot(outlier.shape = NA) +
+  scale_fill_manual(values = c("#8FD5A6","#0C8346", "#C490D1", "purple4")) +
+  xlab("Treatment (°C)") + ylab("AFDM:Wet mass ratio") +
+  LW_theme +
+  theme(legend.position = "bottom") +
+  geom_label(label = "ns", x=2.5, y=0.145, size=4, fill = "white", family = "A")+
+  ##Sample sizes 
+  geom_text(label= "N = 8", x=1, y= 0.12, size=4, family = "A") +
+  geom_text(label= "N = 3", x=2, y=0.093, size=4, family = "A") +
+  geom_text(label= "N = 4", x=3, y=0.115, size= 4, family = "A") +
+  geom_text(label= "N = 2", x=4, y=0.106, size= 4, family = "A", color = "white") 
+
+Ratio.plot
+
+
+###########################
+# PLOT MASS AT COLLECTION
+###########################
+
+#Set up the data
+PO.collection.sub <- PO.collection %>% 
+  mutate(Treatment = case_when(
+    food.treatment =="Fed" & air.treatment=="25" ~ "+mussels/25°C air", 
+    food.treatment =="Fed" & air.treatment=="30" ~ "+mussels/30°C air",  
+    food.treatment =="Starved" & air.treatment=="25" ~ "-mussels/25°C air", 
+    food.treatment =="Starved" & air.treatment=="30" ~ "-mussels/30°C air",  
+    TRUE ~ "other"
+  ))
+
+#As factors
+PO.collection.sub$air.treatment <- as.factor(PO.collection.sub$air.treatment)
+PO.collection.sub$food.treatment <- as.factor(PO.collection.sub$food.treatment)
+
+
+##Test for differences in wet weight
+collection.WW.aov <- aov(star.wet.weight ~ food.treatment*air.treatment,
+                 data = PO.collection.sub)
+
+summary(collection.WW.aov)#NO SIGN DIFFERENCES
+
+#Check for homoscedasticity
+car::leveneTest(star.wet.weight ~ food.treatment*air.treatment,
+                data = PO.collection.sub) #Equal variance
+#Check for normality
+shapiro.test(collection.WW.aov$residuals) #Not NORMAL
+
+#Try kruskal wallace
+collection.WW.KW <- kruskal.test(star.wet.weight ~ Treatment,
+                                 data = PO.collection.sub)
+
+collection.WW.KW #No difference detected!
+
+#----------------------------------------------------------------Make the plot
+
+collection.WW.plot <- PO.collection.sub %>% 
+  ggplot(aes(x = Treatment, y = star.wet.weight, fill = Treatment)) +
+  geom_boxplot(outlier.shape = NA) +
+  scale_fill_manual(values = c("#8FD5A6","#0C8346", "#C490D1", "purple4")) +
+  xlab("Treatment (°C)") + ylab("Collection wet mass (g)") +
+  LW_theme +
+  theme(legend.position = "bottom") +
+  scale_y_continuous(breaks = seq(0, 20, by = 2)) +
+  geom_label(label = "ns", x=2.5, y=18, size=4, fill = "white", family = "A")+
+  ##Sample sizes 
+  geom_text(label= "N = 14", x=1, y= 5, size=4, family = "A") +
+  geom_text(label= "N = 14", x=2, y=7, size=4, family = "A") +
+  geom_text(label= "N = 14", x=3, y=7.4, size= 4, family = "A") +
+  geom_text(label= "N = 14", x=4, y=5.3, size= 4, family = "A", color = "white") 
+
+collection.WW.plot
+
+#--------------Wet weight for stars that survived
+
+surviving.WW.plot <- PO.metabolism.sub.NoCH6 %>% 
+  ggplot(aes(x = Treatment, y = wet.weight.kg*1000, fill = Treatment)) +
+  geom_boxplot(outlier.shape = NA) +
+  scale_fill_manual(values = c("#8FD5A6","#0C8346", "#C490D1", "purple4")) +
+  xlab("Treatment (°C)") + ylab("Survivor wet mass (g)") +
+  LW_theme +
+  theme(legend.position = "bottom") +
+  scale_y_continuous(breaks = seq(0, 20, by = 2)) +
+  geom_label(label = "ns", x=2.5, y=17, size=4, fill = "white", family = "A")+
+  ##Sample sizes 
+  geom_text(label= "N = 8", x=1, y= 5, size=4, family = "A") +
+  geom_text(label= "N = 3", x=2, y=8.3, size=4, family = "A") +
+  geom_text(label= "N = 4", x=3, y=10.5, size= 4, family = "A") +
+  geom_text(label= "N = 2", x=4, y= 4.5, size= 4, family = "A") 
+
+surviving.WW.plot
+
+###############################
+# Figure not included in MS
+###############################
+
+Supp_MassComparison_exp2 <- (collection.WW.plot + surviving.WW.plot)/Ratio.plot +
+  plot_annotation(tag_levels = "a") +
+  plot_layout(nrow = 2, guides = "collect") &
+  theme(legend.position = "bottom")
+
+Supp_MassComparison_exp2
+
+
+#png("MS Figures/Supp_MassComparison_exp2.png", width = 10, height = 8, units = "in", res = 600)
+#Supp_MassComparison_exp2
+#dev.off()
+
+
+#------------------------------------------------------------------------------------
+## Was there a difference in wet mass at collection vs at the end of the experiment?
+### For the sea stars that survived?
+
+#Set up the data
+merge.collection.weight <- merge(PO.collection.sub, PO.survivorship, 
+                                 by = c("star.ID", "air.treatment", "food.treatment"))
+
+merge.collection.weight <- merge.collection.weight %>% 
+  filter(status == "1") %>% 
+  subset(select = c(star.ID, star.wet.weight, Treatment)) %>% 
+  rename(wet.weight = star.wet.weight) %>% 
+  add_column(Time = "Collection") 
+
+merge.survivors.weight <- PO.metabolism.sub.NoCH6 %>% 
+  subset(select = c(star.ID, wet.weight.kg, Treatment)) %>% 
+  group_by(star.ID, Treatment) %>% 
+  summarise("wet.weight" = (wet.weight.kg*1000)) %>% 
+  add_column(Time = "End") 
+
+#Merge dfs
+wet.weight.comparison <- rbind(merge.collection.weight, merge.survivors.weight)
+
+##PLOT this
+WW.comparison.plot <- wet.weight.comparison %>% 
+  ggplot(aes(x = Treatment, y = wet.weight, fill = Treatment)) +
+  geom_boxplot(outlier.shape = NA) +
+  facet_wrap(~Time) +
+  scale_fill_manual(values = c("#8FD5A6","#0C8346", "#C490D1", "purple4")) +
+  xlab("Treatment (°C)") + ylab("Wet mass (g)") +
+  LW_theme +
+  theme(legend.position = "bottom") +
+  scale_y_continuous(breaks = seq(0, 20, by = 2)) 
+
+WW.comparison.plot
+
+########################
+# HISTOGRAM
+# SIZE distribution
+########################
+
+#Collection wet weight
+WW.hist.collection <- PO.collection.sub %>% 
+  ggplot(aes(x = star.wet.weight)) +
+  geom_histogram() +
+  facet_wrap(~Treatment) +
+  LW_theme
+
+WW.hist.collection
+
+#Survivor wet weight
+WW.hist.survivors <- PO.metabolism.sub.NoCH6 %>% 
+  ggplot(aes(x = wet.weight.kg)) +
+  geom_histogram() +
+  facet_wrap(~Treatment) +
+  LW_theme
+
+WW.hist.survivors
+
+
+
+##################################################################################
+# METABOLIC RATES
+##################################################################################
+
+#Set order of treatments for plotting
+PO.metabolism.sub.NoCH6$Treatment <- factor(PO.metabolism.sub.NoCH6$Treatment,
+                                            ordered = TRUE,
+                                            levels = c("+mussels/25°C air","+mussels/30°C air", 
+                                                       "-mussels/25°C air", "-mussels/30°C air"))
+
+
+##########################
+# Stats and Plots
+# Wet Weight corrected
+##########################
+
+##Including channel 6 (the outlier)
+WW.aov.6 <- aov(WW.MR.mL.h.g ~ food.treatment*air.treatment,
+              data = PO.metabolism.sub)
+
+summary(WW.aov.6)
+
+#Check for homoscedasticity
+car::leveneTest(WW.MR.mL.h.g ~ food.treatment*air.treatment,
+                data = PO.metabolism.sub) #Equal variance
+
+#Check for normality
+shapiro.test(WW.aov.6$residuals) #NOT NORMAL
+shapiro.test(PO.metabolism.sub$WW.MR.mL.h.g) #Also NOT normal
+
+#Non-parametric test
+#Create interaction term
+interAB <- interaction(PO.metabolism.sub$food.treatment, PO.metabolism.sub$air.treatment)
+#Test
+kruskal.test(WW.MR.mL.h.g ~ interAB, data = PO.metabolism.sub) #Not significant
+
+
+##DATA WITHOUT CHANNEL 6 (LARGE OUTLIER)
+
+#Two factor ANOVA
+WW.aov <- aov(WW.MR.mL.h.g ~ food.treatment*air.treatment,
+              data = PO.metabolism.sub.NoCH6)
+
+summary(WW.aov)
+
+#Check for homoscedasticity
+car::leveneTest(WW.MR.mL.h.g ~ food.treatment*air.treatment,
+                data = PO.metabolism.sub.NoCH6) #Equal variance
+
+plot(WW.aov, 1) #2, 14, 3 are listed as outliers
+
+#Check for normality
+shapiro.test(WW.aov$residuals) #Normal
+shapiro.test(PO.metabolism.sub.NoCH6$WW.MR.mL.h.g) #Also normal
+
+plot(WW.aov,2)
+
+#Tukey HSD
+WW.tukey <- TukeyHSD(WW.aov, which = "food.treatment")
+
+WW.tukey
+
+##------------------Results
+## No sign. differences detected between air temperatures
+## Sign. diff detected between fed and fasted treatment (p = 0.0178)
+
+#PLOT
+##------------------Wet weight metabolic rate
+set.seed(295)
+PO.metabolism.plotWW <- PO.metabolism.sub.NoCH6 %>% 
+  ggplot(aes(x = Treatment, y = WW.MR.mL.h.g, color = Treatment)) +
+  geom_jitter(width = 0.1) +
+  scale_color_manual(values = c("#8FD5A6","#0C8346", "#C490D1", "purple4")) +
+  LW_theme +
+  theme(legend.position = "none") +
+  labs(x = "Treatment", y = "ṀO2 per g of wet weight") +
+  #geom_text(label= "N = 8", x=1, y=0.051, size=3, family = "A") +
+  #geom_text(label= "N = 3", x=2, y=0.036, size=3, family = "A") +
+  #geom_text(label= "N = 4", x=3, y=0.022, size=3, family = "A") +
+  #geom_text(label= "N = 2", x=4, y=0.025, size=3, family = "A") +
+  scale_y_continuous(breaks = seq(0, 0.1, by = 0.01)) +
+  theme(axis.title.x = element_blank())+
+  geom_label(label = "p < 0.05", x=2.5, y=0.075, size=4, family = "A", color = "black") 
+
+PO.metabolism.plotWW
+
+
+
+###############################
+# Stats and Plots
+# Ash free dry mass corrected
+###############################
+
+
+#One-way ANOVA
+AFDM.aov <- aov(AFDM.kg ~ food.treatment*air.treatment,
+                data = PO.metabolism.sub.NoCH6)
+
+summary(AFDM.aov)
+
+#Check for homoscedasticity
+car::leveneTest(AFDM.kg ~ food.treatment*air.treatment,
+                data = PO.metabolism.sub.NoCH6) #Equal variance
+
+plot(AFDM.aov, 1) #16, 10, 5 are listed as outliers
+
+#Check for normality
+shapiro.test(AFDM.aov$residuals) #Not Normal
+
+plot(AFDM.aov,2)
+
+#Try kruskall wallace
+kruskal.test(AFDM.kg ~ Treatment,
+             data = PO.metabolism.sub.NoCH6) # p = 0.41 (not significant)
+
+#Tukey HSD
+AFDM.tukey <- TukeyHSD(AFDM.aov, which = "food.treatment")
+
+AFDM.tukey
+
+##------------------Results
+## No sign. differences detected
+
+##------------------AFDM metabolic rate
+set.seed(348)
+PO.metabolism.plotAFDM <- PO.metabolism.sub.NoCH6 %>% 
+  ggplot(aes(x = Treatment, y = AFDM.MR.mL.h.g, color = Treatment)) +
+  geom_jitter(width = 0.1) +
+  scale_color_manual(values = c("#8FD5A6","#0C8346", "#C490D1", "purple4")) +
+  LW_theme +
+  theme(legend.position = "none") +
+  labs(x = "Treatment", y = "ṀO2 per g of AFDM") +
+  #geom_text(label= "N = 8", x=1, y=0.425, size=3, family = "A") +
+  #geom_text(label= "N = 3", x=2, y=0.40, size=3, family = "A") +
+  #geom_text(label= "N = 4", x=3, y=0.23, size=3, family = "A") +
+  #geom_text(label= "N = 2", x=4, y=0.32, size=3, family = "A") +
+  scale_y_continuous(breaks = seq(0, 0.6, by = 0.1)) +
+  theme(axis.title.x = element_blank()) +
+  geom_label(label = "ns", x=2.5, y=0.56, size=4, fill = "white", family = "A", color = "black")
+
+PO.metabolism.plotAFDM
+
+
+
+###############################
+# Stats and Plots
+# Volume corrected
+###############################
+
+
+#One-way ANOVA
+MO2.aov <- aov(MO2.mL.h ~ food.treatment*air.treatment,
+               data = PO.metabolism.sub.NoCH6)
+
+summary(MO2.aov)
+
+#Check for homoscedasticity
+bartlett.test(MO2.mL.h ~ Treatment, data = PO.metabolism.sub.NoCH6) #Equal variance
+#Check for normality
+shapiro.test(MO2.aov$residuals) #Not normal
+
+###########Let's try a Kruskal Wallace test since the data isn't normal
+kruskal.test(MO2.mL.h ~ Treatment, data = PO.metabolism.sub.NoCH6) #Still no difference detected
+
+pairwise.wilcox.test(PO.metabolism.sub.NoCH6$MO2.mL.h, PO.metabolism.sub.NoCH6$Treatment,
+                     p.adjust.method = "BH")
+
+#No sign difference detected
+
+##------------------AFDM metabolic rate
+set.seed(584)
+PO.metabolism.plotMO2 <- PO.metabolism.sub.NoCH6 %>% 
+  ggplot(aes(x = Treatment, y = MO2.mL.h, color = Treatment)) +
+  geom_jitter(width = 0.1) +
+  scale_color_manual(values = c("#8FD5A6","#0C8346", "#C490D1", "purple4")) +
+  LW_theme +
+  theme(legend.position = "right") +
+  ylab("ṀO2 (mL/h)") +
+  #geom_text(label= "N = 8", x=1, y=0.23, size=3, family = "A") +
+  #geom_text(label= "N = 3", x=2, y=0.30, size=3, family = "A") +
+  #geom_text(label= "N = 4", x=3, y=0.22, size=3, family = "A") +
+  #geom_text(label= "N = 2", x=4, y=0.17, size=3, family = "A") +
+  scale_y_continuous(breaks = seq(0, 0.8, by = 0.1)) +
+  theme(axis.title.x = element_blank()) +
+  geom_label(label = "ns", x=2.5, y=0.70, size=4, fill = "white", family = "A", color = "black")
+
+PO.metabolism.plotMO2
+
+########################
+# Supp Figure
+#Metabolic methods
+#########################
+
+Supp_MetabolicMethods_exp2 <- PO.metabolism.plotWW + PO.metabolism.plotAFDM + PO.metabolism.plotMO2 + guide_area() +
+  plot_annotation(tag_levels = "a") +
+  plot_layout(nrow=2, ncol=2, guides = "collect") 
+
+Supp_MetabolicMethods_exp2
+
+
+#png("MS Figures/Fig.S3_MetabolicMethods_Exp2.png", width = 10, height = 8, units = "in", res = 600)
+#Supp_MetabolicMethods_exp2
+#dev.off()
+
+

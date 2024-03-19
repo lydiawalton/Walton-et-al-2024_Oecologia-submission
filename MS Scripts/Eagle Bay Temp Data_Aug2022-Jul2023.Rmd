@@ -1,0 +1,194 @@
+---
+title: "Scott's Bay Temperature Data"
+author: "Lydia Walton"
+date: "`r Sys.Date()`"
+output:
+ html_document:
+    css: hidebutton.css
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    code_folding: hide
+---
+
+# Setup
+```{r loading libraries and importing data}
+
+dev.off()
+rm(list = ls(all=T))
+#Set working directory
+library(here)
+#Data manipulation
+library(dplyr)
+library(tidyr)
+#Data visualization
+library(ggplot2)
+library(kableExtra)
+
+
+##Import data
+tempdata <- read.csv("MS Data/ScottsBay_TempData_Aug2021-Jul2023_BaumLab.csv")
+
+##Split date and time into separate columns
+tempdata <- separate(tempdata, DateTime, c("Date", "Time"), sep = " ")
+
+
+#Create theme for plotting
+
+#Font change to Times New Roman as "A"
+windowsFonts(A = windowsFont("Times New Roman"))
+
+#Lydia's theme
+LW_theme <- theme_classic() +
+  theme(text = element_text(family = "A"),
+        axis.title.x = element_text(vjust = -1, size = 12),
+        axis.title.y = element_text(vjust = 2, size = 12),
+        axis.text = element_text(size = 10),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        strip.text = element_text(size = 12),
+        panel.background = element_rect(fill = NA, color = "black"))
+
+```
+
+
+# Data manipulation
+```{r setting up the data}
+#Quick plot of the data
+Scotts.tempseries <- tempdata %>% 
+  ggplot(aes(x = Date, y = Temperature)) +
+  geom_line() +
+  geom_point() +
+  LW_theme +
+  labs(x = "Date (yyyy-mm-dd)", y = "Temperature (°C)")+
+  #scale_x_continuous(breaks = seq(0, 16, by = 2)) +
+  scale_y_continuous(breaks = seq(0, 35, by = 2)) 
+ 
+Scotts.tempseries
+dev.off()
+
+##################################
+## Data manipulation
+##################################
+
+# Split date column into 3 (day, month, year)
+tempdata.months <- tempdata %>%
+  mutate(Year = lubridate::year(Date), 
+                Month = lubridate::month(Date), 
+                Day = lubridate::day(Date))
+
+#Change month to a factor
+tempdata.months$Month <- as.factor(tempdata.months$Month)
+
+#Change year to a factor
+tempdata.months$Year <- as.factor(tempdata.months$Year)
+
+##Create a column with mean, min, and max values of temp 
+
+#-----Per Year
+tempdata.means.perYear <- tempdata.months %>% 
+  group_by(Year) %>% 
+  summarise(meanTemp = mean(Temperature),
+            sdTemp = sd(Temperature),
+            minTemp = min(Temperature),
+            maxTemp = max(Temperature))
+
+#-----Per Month
+tempdata.means.perMonth <- tempdata.months %>% 
+  group_by(Year, Month) %>% 
+  summarise(meanTemp = mean(Temperature),
+            sdTemp = sd(Temperature),
+            minTemp = min(Temperature),
+            maxTemp = max(Temperature))
+
+#-----Per Day
+tempdata.means.perDay <- tempdata.months %>% 
+  group_by(Year, Month, Day) %>% 
+  summarise(meanTemp = mean(Temperature),
+            sdTemp = sd(Temperature),
+            minTemp = min(Temperature),
+            maxTemp = max(Temperature))
+
+
+```
+
+
+# Tables
+```{r}
+####################################################
+## Summary tables of temperature at Scott's Bay
+####################################################
+
+#-------------Per Year
+table.perYear <- tempdata.means.perYear %>%
+  kable(caption = "Table 1. Mean, max and minumum temperatures at Scott's Bay shown per year (2021 and 2022).", 
+   #Change the column names
+      col.names = c("Year", "Mean temp (°C)", "sd temp (°C)", "min temp (°C)", "max temp (°C)"), 
+      align = "c") %>%  #Align the data in the centre of the column
+  row_spec(row = 0, bold = TRUE) %>% #Make the column headers bold
+  kable_classic(full_width = F, html_font = "Arial") 
+
+table.perYear
+
+#-------------Per Month
+table.perMonth <- tempdata.means.perMonth %>% 
+  kable(caption = "Table 1. Mean, max and minumum temperatures at Scott's Bay shown per year (2021 and 2022).", 
+   #Change the column names
+      col.names = c("Year", "Month", 
+                    "Mean temp (°C)", "sd temp (°C)", "min temp (°C)", "max temp (°C)"), 
+      align = "c") %>%  #Align the data in the centre of the column
+  row_spec(row = 0, bold = TRUE) %>% #Make the column headers bold
+  kable_classic(full_width = F, html_font = "Arial") 
+
+table.perMonth
+
+#-------------Summer (May-August)
+table.Summers <- tempdata.means.perMonth %>% 
+  filter(Month == "5" | Month == "6" | Month == "7" | Month == "8" ) %>% 
+  kable(caption = "Table 1. Mean, max and minumum temperatures at Scott's Bay shown per year (2021 and 2022).", 
+   #Change the column names
+      col.names = c("Year", "Month", 
+                    "Mean temp (°C)", "sd temp (°C)", "min temp (°C)", "max temp (°C)"), 
+      align = "c") %>%  #Align the data in the centre of the column
+  row_spec(row = 0, bold = TRUE) %>% #Make the column headers bold
+  kable_classic(full_width = F, html_font = "Arial") 
+
+table.Summers
+
+```
+
+
+
+# Plots
+```{r}
+#####################################################
+## Time series plots of temperature at Scott's Bay
+#####################################################
+
+#------------------Per Month means
+Scotts.tempseries.perMonth <- tempdata.means.perMonth %>% 
+  ggplot(aes(x = Month, y = meanTemp, color = Year, group = Year)) +
+  geom_point() +
+  geom_line() +
+  LW_theme +
+  labs(x = "Month", y = "Temperature (°C)")+
+  #scale_x_continuous(breaks = seq(0, 16, by = 2)) +
+  scale_y_continuous(breaks = seq(0, 17, by = 1)) 
+ 
+Scotts.tempseries.perMonth
+#dev.off()
+
+Scotts.tempseries.meanmaxmin <- tempdata.means.perMonth %>% 
+  ggplot() +
+  geom_point(aes(x = Month, y = meanTemp, color = Year, group = Year)) +
+  geom_line(aes(x = Month, y = meanTemp, color = Year, group = Year)) +
+  geom_ribbon(aes(x=Month, ymin = minTemp, ymax = maxTemp, 
+                  color = Year, group = Year), alpha = 0.2) +
+  facet_wrap(~Year) +
+  LW_theme +
+  scale_y_continuous(breaks = seq(0, 40, by = 2))
+
+Scotts.tempseries.meanmaxmin
+
+```
+
